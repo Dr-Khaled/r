@@ -1,0 +1,172 @@
+---
+title: "Main Oil Pump Reliability Analysis"
+output:
+  html_document: default
+  pdf_document: default
+  toc: true
+---
+
+```{r setup, include= FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(tidyverse)
+library(magrittr)
+```
+```{r loadData, echo=FALSE, include=FALSE , cache=TRUE}
+load("d:/work/mtbf/molp_crdata")
+head(molp_crdata)
+
+pmolcr <- molp_crdata %>% select(site = "Location Site",
+                                 unit = "Location Unit Code",
+                                 unit_d = "Location Unit Code Description",
+                                 loc = "Location",
+                                 loc_d = "Location Description",
+                                 wo = "WO Number",
+                                 wo_d = "WO Description",
+                                 wo_priority = "WO Priority",
+                                 wo_act = "WO Activity Code",
+                                 fail_class = "WO Failure Class",
+                                 problem = "WO Problem Code",
+                                 year = "Report Year",
+                                 month = "Report MOnth",
+                                 date = "WO Reported Date",
+                                 desc = "des",
+                                 wog = "WO Work Group",
+                                 mtbf_in = "Include in MTBF Calculations") %>% mutate(sub_site = str_extract(unit, pattern = "\\d{4}"))
+
+#extract field id from unit code
+pmolcr <- pmolcr %>% mutate(sub_site = str_extract(unit, pattern = "\\d{4}"))
+
+#join site with sub site to be used for grouping more strieght forward
+pmolcr$sub_site = (str_c(pmolcr$site, "-", pmolcr$sub_site)) 
+
+#remove main oil line metere skid from data because its not a pump
+pmolcr <- pmolcr %>% filter(unit != "A-ON-1101-OF10-00")
+```
+
+# Introduction
+
+### content
+1. Executive summary
+2. Introduction
+    + General Statistic
+3. Assumptions
+4. Analysis
+    + Describtive Analysis.
+    + Dominant Failure modes analysis 
+    + General CR WO frequency
+    + Failure rate analysis
+    + Pump Reliability
+5. Conclusions
+6. Recommendations
+
+### Executive Summary 
+
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+# Descriptive analysis
+
+```{r describe, echo=FALSE} 
+totalNoRec <- nrow(pmolcr)
+
+#totalNoPump <- length(unique(pmolcr$unit))
+
+totalNoPump <- pmolcr$unit%>% unique %>% length
+
+```
+Total number of pumps units in analysis is `r totalNoPump` and total number of records is `r totalNoRec`. The map below shows the unit number against site with the volumes of data per each unit. This map shows the fairness of analysis and it is not dominated by one of unit or site. This data is representing `r max(pmolcr$year) - min(pmolcr$year)`years of operation. There are some data lost due to hierarchy standardization albeit the available data is enough to build solid statistical conclusions. 
+
+
+```{r mapUnitToSite, fig.width=11, fig.height=11, echo=FALSE}
+ggplot(pmolcr) + geom_count(aes(x=sub_site, y=unit)) + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+```{r unitsList, echo=FALSE, include=FALSE}
+#show list of units tag that in this analysis
+knitr::kable( pmolcr %>% select(site, unit, description = unit_d) %>% group_by(site, unit) %>% distinct(unit, .keep_all = TRUE) %>% arrange(site, unit))
+
+```
+
+```{r unitsDNo, echo=FALSE, include=FALSE}
+#show summary distinct number of units for each site
+pmolcr %>% select(site,sub_site, unit) %>% group_by(site, sub_site) %>% distinct(unit, .keep_all = T) %>% summarise( count = n())
+```
+
+```{r unitsNo, echo=FALSE, include=FALSE}
+#show summary number of records per each site
+pmolcr %>% select(site,sub_site, unit) %>% group_by(site, sub_site) %>%  summarise( count = n())
+```
+
+# Dominant Failure Modes Analysis
+Dominanat failure modes analysis purpose is to highlight the most problamatic parts and failure modes. Dominate FM charaterizes frequency of CR WOs. 
+
+## Dominant Failed Componenet (Failure Class)
+Failure class Parito analysis below shows which MOL pumps dominate CR WOs.
+It is clear for below chart the "PU" (pump) is dominant fail part in mol pump unit then "VA" which is valves. Failure class codes in this chart are presenting old and new codes for failure class.
+
+```{r FCPA, fig.width=11, fig.height=11}
+count_fail_class <- pmolcr %>% count(fail_class) %>% arrange(desc(n))
+ggplot(count_fail_class) + geom_bar(aes(x=n , y=reorder(fail_class, -n)), stat = "identity")
+```
+
+## Dominant Failure Modes 
+
+```{r FMPA, fig.width=11, fig.height=11}
+count_FM <- pmolcr %>% count(problem) %>% arrange(desc(n))
+ggplot(count_FM[count_FM$problem != "NA-PROBLEM",]) + geom_bar(aes(x = n, y = reorder(problem, -n)), stat = "identity")
+```
+```{r}
+```
+# CR work orders frequency
+Corrective work orders load could be easily estimated for future manpower estimation using corrective work order historical data. The parameters that will enable the future forecasting load are frequency of CR WO and average working hours per work order.
+
+```{r CRFRT}
+now <- as.POSIXct.Date(Sys.Date())
+crFrdf <- pmolcr %>% select(sub_site, unit, date) %>% arrange(sub_site, unit, desc(date)) %>% mutate(ttncr= (ifelse(unit == lag(unit) & !is.na(lag(unit)), as.numeric(difftime(lag(date),date, units = "days")) , as.numeric(difftime(now , date, units = "days"))  )))
+```
+
+```{r CRFRS}
+ggplot(crFrdf) + stat_summary(aes(x = sub_site, y= ttncr), fun.min = min, fun.max = max, fun = mean)
+```
+
+```{r}
+ggplot(crFrdf) + geom_boxplot(aes(x=sub_site, y= ttncr)) + coord_flip()
+```
+
+```{r}
+crFrdf %>% ggplot() + geom_boxplot(aes(y=sub_site, x= ttncr)) + coord_cartesian(xlim = c(0,300))
+```
+
+```{r}
+crFrdf %>% ggplot() + geom_boxplot(aes(ttncr)) + coord_cartesian( xlim = c(0,300))
+```
+
+```{r}
+ggplot(crFrdf) + geom_freqpoly(aes(ttncr))
+```
+```{r}
+ggplot(crFrdf) + geom_freqpoly(aes(ttncr)) + facet_wrap(~sub_site, ncol = 2)
+```
+
+# Mechnical work orders frequency
+Corrective work orders load could be easily estimated for future manpower estimation using corrective work order historical data. The parameters that will enable the future forecasting load are frequency of CR WO and average working hours per work order.
+
+```{r MCRFRT}
+now <- as.POSIXct.Date(Sys.Date())
+mcrFrdf <- pmolcr %>% filter(str_detect(wog,"^MF|^MT/MECH")) %>% select(sub_site, unit, date) %>% arrange(sub_site, unit, desc(date)) %>% mutate(ttncr= (ifelse(unit == lag(unit) & !is.na(lag(unit)), as.numeric(difftime(lag(date),date, units = "days")) , as.numeric(difftime(now , date, units = "days"))  )))
+```
+
+```{r}
+ggplot(mcrFrdf) + geom_freqpoly(aes(ttncr)) + facet_wrap(~sub_site, ncol = 2)
+```
+
+```{r}
+mcrFrdf %>% ggplot() + geom_boxplot(aes(ttncr)) + coord_cartesian( xlim = c(0,300))
+```
+
+```{r}
+mcrFrdf %>% ggplot() + geom_boxplot(aes(y=sub_site, x= ttncr)) + coord_cartesian(xlim = c(0,300))
+```

@@ -1,0 +1,99 @@
+---
+title: "Main Oil Pump Reliability Analysis"
+output:
+  html_document: default
+  pdf_document: default
+  toc: true
+---
+
+```{r setup, include= FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(magrittr)
+```
+```{r loadData, echo=FALSE, include=FALSE , cache=TRUE}
+load("d:/work/mtbf/molp_crdata")
+head(molp_crdata)
+
+pmolcr <- molp_crdata %>% select(site = "Location Site",
+                                 unit = "Location Unit Code",
+                                 unit_d = "Location Unit Code Description",
+                                 loc = "Location",
+                                 loc_d = "Location Description",
+                                 wo = "WO Number",
+                                 wo_d = "WO Description",
+                                 wo_priority = "WO Priority",
+                                 wo_act = "WO Activity Code",
+                                 fail_class = "WO Failure Class",
+                                 problem = "WO Problem Code",
+                                 year = "Report Year",
+                                 month = "Report MOnth",
+                                 date = "WO Reported Date",
+                                 desc = "des",
+                                 mtbf_in = "Include in MTBF Calculations") %>% mutate(sub_site = str_extract(unit, pattern = "\\d{4}"))
+
+#extract field id from unit code
+pmolcr <- pmolcr %>% mutate(sub_site = str_extract(unit, pattern = "\\d{4}"))
+
+#join site with sub site to be used for grouping more strieght forward
+pmolcr$sub_site = (str_c(pmolcr$site, "-", pmolcr$sub_site)) 
+
+#remove main oil line metere skid from data because its not a pump
+pmolcr <- pmolcr %>% filter(unit != "A-ON-1101-OF10-00")
+```
+
+# Inroduction
+
+### content
+1. Excutive summary
+2. Introduction
+    + General Statistic
+3. Assumptions
+4. Analysis
+    + Data cleaning and outliers
+    + Domainent Failure modes analysis 
+    + General CR WO frequency
+    + Failure rate analysis
+    + Pump Reliability
+5. Conclusions
+6. Recommendations
+
+### Excutive Summary 
+
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+# Descriptive analysis
+
+```{r describe, echo=FALSE}
+totalNoRec <- nrow(pmolcr)
+
+#totalNoPump <- length(unique(pmolcr$unit))
+
+totalNoPump <- pmolcr$unit%>% unique %>% length
+
+```
+Total number of pumps units in analysis is `r totalNoPump` and total number of records is `r totalNoRec`. The map show the unit number against site and show the volums of data per each unit.
+
+
+```{r mapUnitToSite, fig.width=11, fig.height=11, echo=FALSE}
+ggplot(pmolcr) + geom_count(aes(x=sub_site, y=unit)) + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+Table 1: Pumps units included in analyss
+
+```{r}
+knitr::kable( pmolcr %>% select(site, unit, description = unit_d) %>% group_by(site, unit) %>% distinct(unit, .keep_all = TRUE) %>% arrange(site, unit))
+```
+
+```{r}
+pmolcr %>% select(site,sub_site, unit) %>% group_by(site, sub_site) %>% distinct(unit, .keep_all = T) %>% summarise( count = n())
+```
+
+```{r}
+
+pmolcr %>% select(site,sub_site, unit) %>% group_by(site, sub_site) %>%  summarise( count = n())
+```
+
